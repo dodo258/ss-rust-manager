@@ -9,7 +9,7 @@ export PATH
 #	GitHub: https://github.com/dodo258/ss-rust-manager
 #=================================================
 
-sh_ver="1.4.0"
+sh_ver="1.5.0"
 FOLDER="/etc/ss-rust"
 FILE="/usr/local/bin/ss-rust"
 CONF="/etc/ss-rust/config.json"
@@ -329,11 +329,48 @@ Auto_tfo(){
 }
 
 Set_password(){
-	echo "请输入 Shadowsocks Rust 密码 [0-9][a-z][A-Z]"
-	read -e -p "(默认：随机生成)：" password
-	[[ -z "${password}" ]] && password=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 16)
+	if [[ "${cipher}" == *"2022"* ]]; then
+		local key_len=16
+		[[ "${cipher}" == *"256"* ]] && key_len=32
+		echo -e "${Tip} 检测到 SS-2022 协议，密钥必须为固定长度的 Base64 字符串。"
+		echo "请输入 Shadowsocks Rust 密钥（留空则自动随机生成）"
+		read -e -p ":" password
+		if [[ -z "${password}" ]]; then
+			password=$(head -c ${key_len} /dev/urandom | base64 | head -c 44)
+			# Correct length normalization for base64
+			[[ ${key_len} -eq 16 ]] && password=$(head -c 16 /dev/urandom | base64)
+			[[ ${key_len} -eq 32 ]] && password=$(head -c 32 /dev/urandom | base64)
+		fi
+	else
+		echo "请输入 Shadowsocks Rust 密码 [0-9][a-z][A-Z]"
+		read -e -p "(默认：随机生成)：" password
+		[[ -z "${password}" ]] && password=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 16)
+	fi
 	echo && echo "=================================="
-	echo -e "密码：${Red_background_prefix} ${password} ${Font_color_suffix}"
+	echo -e "密码/密钥：${Red_background_prefix} ${password} ${Font_color_suffix}"
+	echo "==================================" && echo
+}" == *"2022"* ]]; then
+		echo -e "${Tip} 检测到使用 SS-2022 协议，密码必须为固定长度的 Base64 密钥。"
+		key_len=32
+		[[ "${cipher}" == *"128-gcm"* ]] && key_len=16
+		
+		echo "请输入 Shadowsocks Rust 2022 密钥 (Base64)"
+		read -e -p "(默认：随机生成)：" password
+		if [[ -z "${password}" ]]; then
+			if command -v openssl >/dev/null 2>&1; then
+				password=$(openssl rand -base64 ${key_len})
+			else
+				# Fallback if openssl is missing
+				password=$(head -c ${key_len} /dev/urandom | base64)
+			fi
+		fi
+	else
+		echo "请输入 Shadowsocks Rust 密码 [0-9][a-z][A-Z]"
+		read -e -p "(默认：随机生成)：" password
+		[[ -z "${password}" ]] && password=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 16)
+	fi
+	echo && echo "=================================="
+	echo -e "密码/密钥：${Red_background_prefix} ${password} ${Font_color_suffix}"
 	echo "==================================" && echo
 }
 
@@ -343,6 +380,34 @@ Set_cipher(){
  ${Green_font_prefix} 1.${Font_color_suffix} chacha20-ietf-poly1305 ${Green_font_prefix}(推荐)${Font_color_suffix}
  ${Green_font_prefix} 2.${Font_color_suffix} aes-128-gcm ${Green_font_prefix}(推荐)${Font_color_suffix}
  ${Green_font_prefix} 3.${Font_color_suffix} aes-256-gcm ${Green_font_prefix}(默认)${Font_color_suffix}
+──────────────────────────────────
+ ${Green_font_prefix} 4.${Font_color_suffix} 2022-blake3-aes-128-gcm ${Yellow_font_prefix}(SS-2022)${Font_color_suffix}
+ ${Green_font_prefix} 5.${Font_color_suffix} 2022-blake3-aes-256-gcm ${Yellow_font_prefix}(SS-2022)${Font_color_suffix}
+==================================
+ ${Tip} 仅保留 AEAD 安全加密与最新的 SS-2022 方式。" && echo
+	read -e -p "(默认: 3. aes-256-gcm)：" cipher
+	[[ -z "${cipher}" ]] && cipher="3"
+	if [[ ${cipher} == "1" ]]; then
+		cipher="chacha20-ietf-poly1305"
+	elif [[ ${cipher} == "2" ]]; then
+		cipher="aes-128-gcm"
+	elif [[ ${cipher} == "4" ]]; then
+		cipher="2022-blake3-aes-128-gcm"
+	elif [[ ${cipher} == "5" ]]; then
+		cipher="2022-blake3-aes-256-gcm"
+	else
+		cipher="aes-256-gcm"
+	fi
+	echo && echo "=================================="
+	echo -e "加密：${Red_background_prefix} ${cipher} ${Font_color_suffix}"
+	echo "==================================" && echo
+} 1.${Font_color_suffix} chacha20-ietf-poly1305 ${Green_font_prefix}(推荐)${Font_color_suffix}
+ ${Green_font_prefix} 2.${Font_color_suffix} aes-128-gcm ${Green_font_prefix}(推荐)${Font_color_suffix}
+ ${Green_font_prefix} 3.${Font_color_suffix} aes-256-gcm ${Green_font_prefix}(默认)${Font_color_suffix}
+ ——————————————————————————————————
+ ${Green_font_prefix} 4.${Font_color_suffix} 2022-blake3-aes-128-gcm ${Yellow_font_prefix}(SS-2022)${Font_color_suffix}
+ ${Green_font_prefix} 5.${Font_color_suffix} 2022-blake3-aes-256-gcm ${Yellow_font_prefix}(SS-2022)${Font_color_suffix}
+ ${Green_font_prefix} 6.${Font_color_suffix} 2022-blake3-chacha20-poly1305 ${Yellow_font_prefix}(SS-2022)${Font_color_suffix}
 ==================================
  ${Tip} 仅保留 AEAD 安全加密方式。" && echo
 	read -e -p "(默认: 3. aes-256-gcm)：" cipher
@@ -351,6 +416,12 @@ Set_cipher(){
 		cipher="chacha20-ietf-poly1305"
 	elif [[ ${cipher} == "2" ]]; then
 		cipher="aes-128-gcm"
+	elif [[ ${cipher} == "4" ]]; then
+		cipher="2022-blake3-aes-128-gcm"
+	elif [[ ${cipher} == "5" ]]; then
+		cipher="2022-blake3-aes-256-gcm"
+	elif [[ ${cipher} == "6" ]]; then
+		cipher="2022-blake3-chacha20-poly1305"
 	else
 		cipher="aes-256-gcm"
 	fi
@@ -635,7 +706,7 @@ action=$1
 ╔══════════════════════════════════════════════════════╗
 ║             Shadowsocks-Rust Manager                ║
 ║             ${Red_font_prefix}v${sh_ver}${Font_color_suffix}  by ${Green_font_prefix}dodo258${Font_color_suffix}                 ║
-║   GitHub: https://github.com/dodo258/Shadowsocks-Rust ║
+║   GitHub: https://github.com/dodo258/ss-rust-manager ║
 ╚══════════════════════════════════════════════════════╝
  ${Green_font_prefix} 0.${Font_color_suffix} 更新脚本
 ──────────────────────────────────────────────────────
