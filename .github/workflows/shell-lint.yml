@@ -1,0 +1,20 @@
+name: shell-lint
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell syntax check
+        run: |
+          bash -n ss-rust.sh
+          bash -n Shadowsocks-Rust.sh
+      - name: ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: '.'
+          severity: error
