@@ -6,7 +6,7 @@ export PATH
 #	System Required: CentOS/Debian/Ubuntu
 #	Description: Shadowsocks Rust 管理脚本
 #	Maintainer: dodo258
-#	GitHub: https://github.com/dodo258/ss-rust-manager
+#	GitHub: https://github.com/dodo258/Shadowsocks-Rust
 #=================================================
 
 sh_ver="1.5.0"
@@ -15,6 +15,70 @@ FILE="/usr/local/bin/ss-rust"
 CONF="/etc/ss-rust/config.json"
 Now_ver_File="/etc/ss-rust/ver.txt"
 Local="/etc/sysctl.d/local.conf"
+LOG_FILE="/var/log/ss-rust.log"
+BACKUP_DIR="/etc/ss-rust/backups"
+
+# 日志函数
+log_msg(){
+    local level="$1"
+    shift
+    local msg="$*"
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo -e "${timestamp} [${level}] ${msg}" | tee -a "${LOG_FILE}"
+}
+
+log_info(){ log_msg "INFO" "$*"; }
+log_error(){ log_msg "ERROR" "$*"; }
+log_warn(){ log_msg "WARN" "$*"; }
+
+# 错误处理函数
+trap_error(){
+    local line_num=$1
+    log_error "脚本执行出错 at line ${line_num}"
+    echo -e "${Error} 操作失败，请查看日志: ${LOG_FILE}"
+    exit 1
+}
+trap 'trap_error ${LINENO}' ERR
+
+# 备份函数
+backup_config(){
+    if [[ -f "${CONF}" ]]; then
+        mkdir -p "${BACKUP_DIR}"
+        local backup_file="${BACKUP_DIR}/config_$(date +%Y%m%d_%H%M%S).json"
+        cp -p "${CONF}" "${backup_file}"
+        log_info "配置文件已备份到: ${backup_file}"
+        # 保留最近5个备份
+        ls -1t "${BACKUP_DIR}"/config_*.json | tail -n +6 | xargs -r rm -f
+        echo -e "${Info} 配置文件已自动备份 (${backup_file})"
+    fi
+}
+
+# 验证配置函数
+validate_config(){
+    if [[ ! -f "${CONF}" ]]; then
+        log_error "配置文件不存在: ${CONF}"
+        return 1
+    fi
+    
+    # 验证 JSON 格式
+    if ! jq empty "${CONF}" 2>/dev/null; then
+        log_error "配置文件格式错误"
+        return 1
+    fi
+    
+    # 验证必要字段
+    local required_fields=("server" "server_port" "password" "method")
+    for field in "${required_fields[@]}"; do
+        local value=$(jq -r ".${field}" "${CONF}" 2>/dev/null)
+        if [[ -z "${value}" || "${value}" == "null" ]]; then
+            log_error "配置缺少必要字段: ${field}"
+            return 1
+        fi
+    done
+    
+    log_info "配置文件验证通过"
+    return 0
+}
 
 Green_font_prefix="\033[32m" && Red_font_prefix="\033[31m" && Green_background_prefix="\033[42;37m" && Red_background_prefix="\033[41;37m" && Font_color_suffix="\033[0m" && Yellow_font_prefix="\033[0;33m"
 Info="${Green_font_prefix}[信息]${Font_color_suffix}"
@@ -22,7 +86,7 @@ Error="${Red_font_prefix}[错误]${Font_color_suffix}"
 Tip="${Yellow_font_prefix}[注意]${Font_color_suffix}"
 
 check_root(){
-	[[ $EUID != 0 ]] && echo -e "${Error} 当前非ROOT账号(或没有ROOT权限)，无法继续操作，请更换ROOT账号或使用 ${Green_background_prefix}sudo su${Font_color_suffix} 命令获取临时ROOT权限（执行后可能会提示输入当前账号的密码）。" && exit 1
+	[[ $EUID != 0 ]] && echo -e "${Error} 当前非ROOT账号(或没有ROOT权限)，无法继续操作，请更换ROOT账号或使用 ${Green_background_prefix}sudo su${Font_color_suffix} 命令获取临时ROOT权限（执行后可能会提示输入当前账号的密码）。" && log_error "非ROOT用户尝试执行" && exit 1
 }
 
 ensure_runtime_dependencies(){
@@ -124,8 +188,9 @@ check_status(){
 
 check_new_ver(){
 	new_ver=$(curl -fsSL --retry 2 --connect-timeout 10 "https://api.github.com/repos/shadowsocks/shadowsocks-rust/releases?per_page=20" | jq -r '[.[] | select(.prerelease == false and .draft == false) | .tag_name] | .[0]')
-	[[ -z ${new_ver} || ${new_ver} == "null" ]] && echo -e "${Error} Shadowsocks Rust 最新版本获取失败！" && exit 1
+	[[ -z ${new_ver} || ${new_ver} == "null" ]] && echo -e "${Error} Shadowsocks Rust 最新版本获取失败！" && log_error "获取最新版本失败" && exit 1
 	echo -e "${Info} 检测到 Shadowsocks Rust 最新版本为 [ ${new_ver} ]"
+	log_info "检测到最新版本: ${new_ver}"
 }
 
 check_ver_comparison(){
@@ -329,23 +394,11 @@ Auto_tfo(){
 }
 
 Set_password(){
-	if [[ "${cipher}" == *"2022"* ]]; then
-		local key_len=16
-		[[ "${cipher}" == *"256"* ]] && key_len=32
-		echo -e "${Tip} 检测到 SS-2022 协议，密钥必须为固定长度的 Base64 字符串。"
-		echo "请输入 Shadowsocks Rust 密钥（留空则自动随机生成）"
-		read -e -p ":" password
-		if [[ -z "${password}" ]]; then
-			# Standard base64 keys for SS-2022
-			password=$(head -c ${key_len} /dev/urandom | base64)
-		fi
-	else
-		echo "请输入 Shadowsocks Rust 密码 [0-9][a-z][A-Z]"
-		read -e -p "(默认：随机生成)：" password
-		[[ -z "${password}" ]] && password=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 16)
-	fi
+	echo "请输入 Shadowsocks Rust 密码 [0-9][a-z][A-Z]"
+	read -e -p "(默认：随机生成)：" password
+	[[ -z "${password}" ]] && password=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 16)
 	echo && echo "=================================="
-	echo -e "密码/密钥：${Red_background_prefix} ${password} ${Font_color_suffix}"
+	echo -e "密码：${Red_background_prefix} ${password} ${Font_color_suffix}"
 	echo "==================================" && echo
 }
 
@@ -355,21 +408,14 @@ Set_cipher(){
  ${Green_font_prefix} 1.${Font_color_suffix} chacha20-ietf-poly1305 ${Green_font_prefix}(推荐)${Font_color_suffix}
  ${Green_font_prefix} 2.${Font_color_suffix} aes-128-gcm ${Green_font_prefix}(推荐)${Font_color_suffix}
  ${Green_font_prefix} 3.${Font_color_suffix} aes-256-gcm ${Green_font_prefix}(默认)${Font_color_suffix}
-──────────────────────────────────
- ${Green_font_prefix} 4.${Font_color_suffix} 2022-blake3-aes-128-gcm ${Yellow_font_prefix}(SS-2022)${Font_color_suffix}
- ${Green_font_prefix} 5.${Font_color_suffix} 2022-blake3-aes-256-gcm ${Yellow_font_prefix}(SS-2022)${Font_color_suffix}
 ==================================
- ${Tip} 仅保留 AEAD 安全加密与最新的 SS-2022 方式。" && echo
+ ${Tip} 仅保留 AEAD 安全加密方式。" && echo
 	read -e -p "(默认: 3. aes-256-gcm)：" cipher
 	[[ -z "${cipher}" ]] && cipher="3"
 	if [[ ${cipher} == "1" ]]; then
 		cipher="chacha20-ietf-poly1305"
 	elif [[ ${cipher} == "2" ]]; then
 		cipher="aes-128-gcm"
-	elif [[ ${cipher} == "4" ]]; then
-		cipher="2022-blake3-aes-128-gcm"
-	elif [[ ${cipher} == "5" ]]; then
-		cipher="2022-blake3-aes-256-gcm"
 	else
 		cipher="aes-256-gcm"
 	fi
@@ -380,6 +426,9 @@ Set_cipher(){
 
 Set(){
 	check_installed_status
+	# 修改配置前先备份
+	backup_config
+	
 	echo && echo -e "你要做什么？
 ==================================
  ${Green_font_prefix}1.${Font_color_suffix}  修改 端口配置
@@ -436,7 +485,8 @@ Set(){
 }
 
 Install(){
-	[[ -e ${FILE} ]] && echo -e "${Error} 检测到 Shadowsocks Rust 已安装！" && exit 1
+	[[ -e ${FILE} ]] && echo -e "${Error} 检测到 Shadowsocks Rust 已安装！" && log_error "尝试重复安装" && exit 1
+	log_info "开始安装 Shadowsocks Rust"
 	echo -e "${Info} 开始设置 配置..."
 	Set_port
 	Set_password
@@ -451,17 +501,32 @@ Install(){
 	Service
 	echo -e "${Info} 开始写入 配置文件..."
 	Write_config
+	# 验证配置
+	if validate_config; then
+		log_info "配置文件验证通过"
+	else
+		log_warn "配置文件验证失败，但继续启动服务"
+	fi
 	echo -e "${Info} 所有步骤 安装完毕，开始启动..."
 	Start
+	log_info "Shadowsocks Rust 安装完成"
 }
 
 Start(){
 	check_installed_status
 	check_status
 	[[ "$status" == "running" ]] && echo -e "${Info} Shadowsocks Rust 已在运行 ！" && exit 1
+	log_info "启动 Shadowsocks Rust 服务"
 	systemctl start ss-rust
+	sleep 2
 	check_status
-	[[ "$status" == "running" ]] && echo -e "${Info} Shadowsocks Rust 启动成功 ！"
+	if [[ "$status" == "running" ]]; then
+		echo -e "${Info} Shadowsocks Rust 启动成功 ！"
+		log_info "Shadowsocks Rust 启动成功"
+	else
+		log_error "Shadowsocks Rust 启动失败"
+		echo -e "${Error} Shadowsocks Rust 启动失败，请检查日志: journalctl -u ss-rust"
+	fi
     sleep 3s
     Start_Menu
 }
@@ -470,15 +535,26 @@ Stop(){
 	check_installed_status
 	check_status
 	[[ "$status" != "running" ]] && echo -e "${Error} Shadowsocks Rust 没有运行，请检查！" && exit 1
+	log_info "停止 Shadowsocks Rust 服务"
 	systemctl stop ss-rust
+	log_info "Shadowsocks Rust 已停止"
     sleep 3s
     Start_Menu
 }
 
 Restart(){
 	check_installed_status
+	log_info "重启 Shadowsocks Rust 服务"
 	systemctl restart ss-rust
-	echo -e "${Info} Shadowsocks Rust 重启完毕 ！"
+	sleep 2
+	check_status
+	if [[ "$status" == "running" ]]; then
+		echo -e "${Info} Shadowsocks Rust 重启完毕 ！"
+		log_info "Shadowsocks Rust 重启成功"
+	else
+		log_error "Shadowsocks Rust 重启失败"
+		echo -e "${Error} Shadowsocks Rust 重启失败，请检查日志"
+	fi
 	sleep 3s
 	View
     Start_Menu
@@ -486,8 +562,10 @@ Restart(){
 
 Update(){
 	check_installed_status
+	log_info "开始检查更新"
 	check_new_ver
 	check_ver_comparison
+	log_info "Shadowsocks Rust 更新检查完成"
 	echo -e "${Info} Shadowsocks Rust 更新完毕！"
     sleep 3s
     Start_Menu
@@ -500,13 +578,16 @@ Uninstall(){
 	read -e -p "(默认：n)：" unyn
 	[[ -z ${unyn} ]] && unyn="n"
 	if [[ ${unyn} == [Yy] ]]; then
+		log_info "开始卸载 Shadowsocks Rust"
 		check_status
 		[[ "$status" == "running" ]] && systemctl stop ss-rust
         systemctl disable ss-rust
 		rm -rf "${FOLDER}"
 		rm -rf "${FILE}"
+		log_info "Shadowsocks Rust 卸载完成"
 		echo && echo "Shadowsocks Rust 卸载完成！" && echo
 	else
+		log_info "用户取消卸载操作"
 		echo && echo "卸载已取消..." && echo
 	fi
     sleep 3s
@@ -564,6 +645,11 @@ Link_QR(){
 
 View(){
 	check_installed_status
+	# 验证配置
+	if ! validate_config; then
+		echo -e "${Error} 配置文件验证失败！"
+		log_warn "查看配置时发现配置文件验证失败"
+	fi
 	Read_config
 	getipv4
 	getipv6
@@ -581,6 +667,7 @@ View(){
 	[[ ! -z "${link_ipv4}" ]] && echo -e "${link_ipv4}"
 	[[ ! -z "${link_ipv6}" ]] && echo -e "${link_ipv6}"
 	echo -e "——————————————————————————————————"
+	log_info "查看配置信息"
 	Before_Start_Menu
 }
 
@@ -593,14 +680,14 @@ Status(){
 
 Update_Shell(){
 	echo -e "当前版本为 [ ${sh_ver} ]，开始检测最新版本..."
-	sh_new_ver=$(wget -qO- "https://raw.githubusercontent.com/dodo258/ss-rust-manager/main/ss-rust.sh"|grep 'sh_ver="'|awk -F "=" '{print $NF}'|sed 's/\"//g'|head -1)
+	sh_new_ver=$(wget -qO- "https://raw.githubusercontent.com/dodo258/Shadowsocks-Rust/master/ss-rust.sh"|grep 'sh_ver="'|awk -F "=" '{print $NF}'|sed 's/\"//g'|head -1)
 	[[ -z ${sh_new_ver} ]] && echo -e "${Error} 检测最新版本失败 !" && Start_Menu
 	if [[ ${sh_new_ver} != ${sh_ver} ]]; then
 		echo -e "发现新版本[ ${sh_new_ver} ]，是否更新？[Y/n]"
 		read -p "(默认：y)：" yn
 		[[ -z "${yn}" ]] && yn="y"
 		if [[ ${yn} == [Yy] ]]; then
-			wget -O ss-rust.sh https://raw.githubusercontent.com/dodo258/ss-rust-manager/main/ss-rust.sh && chmod +x ss-rust.sh
+			wget -O ss-rust.sh https://raw.githubusercontent.com/dodo258/Shadowsocks-Rust/master/ss-rust.sh && chmod +x ss-rust.sh
 			echo -e "脚本已更新为最新版本[ ${sh_new_ver} ]！"
 			echo -e "3s后执行新脚本"
             sleep 3s
@@ -654,7 +741,7 @@ action=$1
 ╔══════════════════════════════════════════════════════╗
 ║             Shadowsocks-Rust Manager                ║
 ║             ${Red_font_prefix}v${sh_ver}${Font_color_suffix}  by ${Green_font_prefix}dodo258${Font_color_suffix}                 ║
-║   GitHub: https://github.com/dodo258/ss-rust-manager ║
+║   GitHub: https://github.com/dodo258/Shadowsocks-Rust ║
 ╚══════════════════════════════════════════════════════╝
  ${Green_font_prefix} 0.${Font_color_suffix} 更新脚本
 ──────────────────────────────────────────────────────
