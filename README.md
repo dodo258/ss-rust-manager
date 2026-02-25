@@ -8,7 +8,7 @@
 ## 一键运行（推荐）
 
 ```bash
-wget -O ss-rust.sh https://raw.githubusercontent.com/dodo258/Shadowsocks-Rust/master/ss-rust.sh && chmod +x ss-rust.sh && ./ss-rust.sh
+wget -O ss-rust.sh https://raw.githubusercontent.com/dodo258/ss-rust-manager/main/ss-rust.sh && chmod +x ss-rust.sh && ./ss-rust.sh
 ```
 
 ## 快速使用

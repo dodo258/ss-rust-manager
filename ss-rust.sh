@@ -6,7 +6,7 @@ export PATH
 #	System Required: CentOS/Debian/Ubuntu
 #	Description: Shadowsocks Rust 管理脚本
 #	Maintainer: dodo258
-#	GitHub: https://github.com/dodo258/Shadowsocks-Rust
+#	GitHub: https://github.com/dodo258/ss-rust-manager
 #=================================================
 
 sh_ver="1.4.0"
@@ -574,14 +574,14 @@ Status(){
 
 Update_Shell(){
 	echo -e "当前版本为 [ ${sh_ver} ]，开始检测最新版本..."
-	sh_new_ver=$(wget -qO- "https://raw.githubusercontent.com/dodo258/Shadowsocks-Rust/master/ss-rust.sh"|grep 'sh_ver="'|awk -F "=" '{print $NF}'|sed 's/\"//g'|head -1)
+	sh_new_ver=$(wget -qO- "https://raw.githubusercontent.com/dodo258/ss-rust-manager/main/ss-rust.sh"|grep 'sh_ver="'|awk -F "=" '{print $NF}'|sed 's/\"//g'|head -1)
 	[[ -z ${sh_new_ver} ]] && echo -e "${Error} 检测最新版本失败 !" && Start_Menu
 	if [[ ${sh_new_ver} != ${sh_ver} ]]; then
 		echo -e "发现新版本[ ${sh_new_ver} ]，是否更新？[Y/n]"
 		read -p "(默认：y)：" yn
 		[[ -z "${yn}" ]] && yn="y"
 		if [[ ${yn} == [Yy] ]]; then
-			wget -O ss-rust.sh https://raw.githubusercontent.com/dodo258/Shadowsocks-Rust/master/ss-rust.sh && chmod +x ss-rust.sh
+			wget -O ss-rust.sh https://raw.githubusercontent.com/dodo258/ss-rust-manager/main/ss-rust.sh && chmod +x ss-rust.sh
 			echo -e "脚本已更新为最新版本[ ${sh_new_ver} ]！"
 			echo -e "3s后执行新脚本"
             sleep 3s
