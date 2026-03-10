@@ -80,10 +80,41 @@ validate_config(){
     return 0
 }
 
-Green_font_prefix="\033[32m" && Red_font_prefix="\033[31m" && Green_background_prefix="\033[42;37m" && Red_background_prefix="\033[41;37m" && Font_color_suffix="\033[0m" && Yellow_font_prefix="\033[0;33m"
-Info="${Green_font_prefix}[信息]${Font_color_suffix}"
-Error="${Red_font_prefix}[错误]${Font_color_suffix}"
-Tip="${Yellow_font_prefix}[注意]${Font_color_suffix}"
+# 配色方案 - 现代深色主题
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+PURPLE='\033[0;35m'
+WHITE='\033[1;37m'
+GRAY='\033[0;90m'
+NC='\033[0m'  # No Color
+
+# 渐变色
+Gradient_Purple='\033[38;5;141m'
+Gradient_Blue='\033[38;5;33m'
+
+# 背景色
+BG_GREEN='\033[42;37m'
+BG_RED='\033[41;37m'
+BG_BLUE='\033[44;37m'
+
+# 兼容旧变量
+Green_font_prefix="${GREEN}"
+Red_font_prefix="${RED}"
+Yellow_font_prefix="${YELLOW}"
+Blue_font_prefix="${BLUE}"
+Cyan_font_prefix="${CYAN}"
+Green_background_prefix="${BG_GREEN}"
+Red_background_prefix="${BG_RED}"
+Font_color_suffix="${NC}"
+
+Info="${GREEN}[信息]${NC}"
+Error="${RED}[错误]${NC}"
+Tip="${YELLOW}[注意]${NC}"
+Success="${GREEN}[成功]${NC}"
+Warn="${YELLOW}[警告]${NC}"
 
 check_root(){
 	[[ $EUID != 0 ]] && echo -e "${Error} 当前非ROOT账号(或没有ROOT权限)，无法继续操作，请更换ROOT账号或使用 ${Green_background_prefix}sudo su${Font_color_suffix} 命令获取临时ROOT权限（执行后可能会提示输入当前账号的密码）。" && log_error "非ROOT用户尝试执行" && exit 1
@@ -510,6 +541,31 @@ Install(){
 	echo -e "${Info} 所有步骤 安装完毕，开始启动..."
 	Start
 	log_info "Shadowsocks Rust 安装完成"
+	
+	# 安装完成后显示节点信息
+	echo -e "${Info} 正在生成节点信息..."
+	Read_config
+	getipv4
+	getipv6
+	Link_QR
+	
+	echo -e "
+╔══════════════════════════════════════════════════════╗
+║           🎉 安装成功！节点信息如下 🎉            ║
+╚══════════════════════════════════════════════════════╝
+"
+	[[ "${ipv4}" != "IPv4_Error" ]] && echo -e " 🌐 IPv4: ${Green_font_prefix}${ipv4}${Font_color_suffix}"
+	[[ "${ipv6}" != "IPv6_Error" ]] && echo -e " 🌐 IPv6: ${Green_font_prefix}${ipv6}${Font_color_suffix}"
+	echo -e " 🔌 端口: ${Green_font_prefix}${port}${Font_color_suffix}"
+	echo -e " 🔑 密码: ${Green_font_prefix}${password}${Font_color_suffix}"
+	echo -e " 🔐 加密: ${Green_font_prefix}${cipher}${Font_color_suffix}"
+	echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	[[ ! -z "${link_ipv4}" ]] && echo -e "${link_ipv4}"
+	[[ ! -z "${link_ipv6}" ]] && echo -e "${link_ipv6}"
+	echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	echo -e "${Tip} 节点信息已生成，请复制上方链接添加到客户端"
+	echo -e "${Tip} 如需再次查看配置信息，请运行 ss-rust 选择 8"
+	echo
 }
 
 Start(){
@@ -731,34 +787,58 @@ Quick_Install(){
 	Service
 	Write_config
 	Start
+	
+	# 快速安装完成后也显示节点信息
+	echo -e "${Info} 正在生成节点信息..."
+	Read_config
+	getipv4
+	getipv6
+	Link_QR
+	
+	echo -e "
+╔══════════════════════════════════════════════════════╗
+║           🎉 快速安装成功！节点信息如下 🎉          ║
+╚══════════════════════════════════════════════════════╝
+"
+	[[ "${ipv4}" != "IPv4_Error" ]] && echo -e " 🌐 IPv4: ${GREEN}${ipv4}${NC}"
+	[[ "${ipv6}" != "IPv6_Error" ]] && echo -e " 🌐 IPv6: ${GREEN}${ipv6}${NC}"
+	echo -e " 🔌 端口: ${GREEN}${port}${NC}"
+	echo -e " 🔑 密码: ${GREEN}${password}${NC}"
+	echo -e " 🔐 加密: ${GREEN}${cipher}${NC}"
+	echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	[[ ! -z "${link_ipv4}" ]] && echo -e "${link_ipv4}"
+	[[ ! -z "${link_ipv6}" ]] && echo -e "${link_ipv6}"
+	echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	echo -e "${Tip} 节点信息已生成，请复制上方链接添加到客户端"
+	echo
 }
 
 Start_Menu(){
 clear
 init_env
 action=$1
-	echo && echo -e "
-╔══════════════════════════════════════════════════════╗
-║             Shadowsocks-Rust Manager                ║
-║             ${Red_font_prefix}v${sh_ver}${Font_color_suffix}  by ${Green_font_prefix}dodo258${Font_color_suffix}                 ║
-║   GitHub: https://github.com/dodo258/Shadowsocks-Rust ║
-╚══════════════════════════════════════════════════════╝
- ${Green_font_prefix} 0.${Font_color_suffix} 更新脚本
-──────────────────────────────────────────────────────
- ${Green_font_prefix} 1.${Font_color_suffix} 安装 Shadowsocks Rust（标准交互）
- ${Green_font_prefix}11.${Font_color_suffix} 快速引导安装（仍需输入端口/密码/加密）
- ${Green_font_prefix} 2.${Font_color_suffix} 更新 Shadowsocks Rust
- ${Green_font_prefix} 3.${Font_color_suffix} 卸载 Shadowsocks Rust
-──────────────────────────────────────────────────────
- ${Green_font_prefix} 4.${Font_color_suffix} 启动 Shadowsocks Rust
- ${Green_font_prefix} 5.${Font_color_suffix} 停止 Shadowsocks Rust
- ${Green_font_prefix} 6.${Font_color_suffix} 重启 Shadowsocks Rust
-──────────────────────────────────────────────────────
- ${Green_font_prefix} 7.${Font_color_suffix} 修改 配置信息
- ${Green_font_prefix} 8.${Font_color_suffix} 查看 配置信息
- ${Green_font_prefix} 9.${Font_color_suffix} 查看 运行状态
-──────────────────────────────────────────────────────
- ${Green_font_prefix}10.${Font_color_suffix} 退出脚本
+	echo -e "
+${CYAN}╔════════════════════════════════════════════════════════╗${NC}
+${CYAN}║${NC}     ${Gradient_Purple}🚇  Shadowsocks-Rust 管理面板  🚇${NC}          ${CYAN}║${NC}
+${CYAN}║${NC}                    ${BLUE}v${sh_ver}${NC}                            ${CYAN}║${NC}
+${CYAN}║${NC}          ${GRAY}by ${WHITE}dodo258${GRAY}  |  ${WHITE}GitHub${GRAY}: dodo258${NC}          ${CYAN}║${NC}
+${CYAN}╚════════════════════════════════════════════════════════╝${NC}
+${GRAY}────────────────────────────────────────────────────────${NC}
+${GREEN}  0.${NC}  更新脚本
+${GREEN}  1.${NC}  安装 Shadowsocks Rust（标准交互）
+${GREEN} 11.${NC}  快速引导安装（仍需输入端口/密码/加密）
+${GREEN}  2.${NC}  更新 Shadowsocks Rust
+${GREEN}  3.${NC}  卸载 Shadowsocks Rust
+${GRAY}────────────────────────────────────────────────────────${NC}
+${BLUE}  4.${NC}  启动 Shadowsocks Rust
+${BLUE}  5.${NC}  停止 Shadowsocks Rust
+${BLUE}  6.${NC}  重启 Shadowsocks Rust
+${GRAY}────────────────────────────────────────────────────────${NC}
+${YELLOW}  7.${NC}  修改配置信息
+${YELLOW}  8.${NC}  查看配置信息
+${YELLOW}  9.${NC}  查看运行状态
+${GRAY}────────────────────────────────────────────────────────${NC}
+${RED} 10.${NC}  退出脚本
 " && echo
 	if [[ -e ${FILE} ]]; then
 		check_status
