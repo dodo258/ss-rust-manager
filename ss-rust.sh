@@ -813,33 +813,79 @@ Quick_Install(){
 	echo
 }
 
+# 彩虹渐变函数
+rainbow_text() {
+    local text="$1"
+    local colors=(196 202 208 214 220 226 190 154 118 82 46 47 48 49 50 51 45 39 33 27 21 57 93 129 165 201)
+    local result=""
+    local i=0
+    for ((j=0; j<${#text}; j++)); do
+        char="${text:$j:1}"
+        if [[ "$char" == " " ]]; then
+            result+=" "
+        else
+            color="${colors[$i]}"
+            result+="\033[38;5;${color}m${char}"
+            ((i=(i+1)%${#colors[@]}))
+        fi
+    done
+    result+="${NC}"
+    echo -e "$result"
+}
+
+# ASCII Logo
+show_logo() {
+    echo -e "
+${CYAN}       ┏━┓┏━┓┏┓  ┏┓  ┏━┓  ┏┓  ┏━┓  ┏┓  ┏━┓${NC}
+${CYAN}       ┗━┓┃  ┃┗┓  ┃┗┓  ┃ ┃  ┃┗┓  ┃  ┃  ┗━┓${NC}
+${CYAN}       ┗━┛┗━┛┗━┛  ┗━┛  ┗━┛  ┗━┛  ┗━┛  ┗━┛${NC}
+${GRAY}                    超速隧道 · 安全穿透${NC}"
+}
+
 Start_Menu(){
 clear
 init_env
 action=$1
+
+	# 获取状态信息
+	local status_text=""
+	local status_color=""
+	if [[ -e ${FILE} ]]; then
+		check_status
+		if [[ "$status" == "running" ]]; then
+			status_text="🟢 运行中"
+			status_color="${GREEN}"
+		else
+			status_text="🟡 已停止"
+			status_color="${YELLOW}"
+		fi
+	else
+		status_text="🔴 未安装"
+		status_color="${RED}"
+	fi
+
+	# 显示界面
+	show_logo
+	echo
+	rainbow_text "          ✨ Shadowsocks-Rust 管理面板 ✨"
 	echo -e "
-${CYAN}╔════════════════════════════════════════════════════════╗${NC}
-${CYAN}║${NC}     ${Gradient_Purple}🚇  Shadowsocks-Rust 管理面板  🚇${NC}          ${CYAN}║${NC}
-${CYAN}║${NC}                    ${BLUE}v${sh_ver}${NC}                            ${CYAN}║${NC}
-${CYAN}║${NC}          ${GRAY}by ${WHITE}dodo258${GRAY}  |  ${WHITE}GitHub${GRAY}: dodo258${NC}          ${CYAN}║${NC}
-${CYAN}╚════════════════════════════════════════════════════════╝${NC}
-${GRAY}────────────────────────────────────────────────────────${NC}
-${GREEN}  0.${NC}  更新脚本
-${GREEN}  1.${NC}  安装 Shadowsocks Rust（标准交互）
-${GREEN} 11.${NC}  快速引导安装（仍需输入端口/密码/加密）
-${GREEN}  2.${NC}  更新 Shadowsocks Rust
-${GREEN}  3.${NC}  卸载 Shadowsocks Rust
-${GRAY}────────────────────────────────────────────────────────${NC}
-${BLUE}  4.${NC}  启动 Shadowsocks Rust
-${BLUE}  5.${NC}  停止 Shadowsocks Rust
-${BLUE}  6.${NC}  重启 Shadowsocks Rust
-${GRAY}────────────────────────────────────────────────────────${NC}
-${YELLOW}  7.${NC}  修改配置信息
-${YELLOW}  8.${NC}  查看配置信息
-${YELLOW}  9.${NC}  查看运行状态
-${GRAY}────────────────────────────────────────────────────────${NC}
-${RED} 10.${NC}  退出脚本
-" && echo
+${CYAN}┏━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┓${NC}
+${CYAN}┃${NC}  📦 ${WHITE}安装部署${NC}        ${CYAN}┃${NC}  ⚡ ${WHITE}服务控制${NC}            ${CYAN}┃${NC} ${YELLOW}状态${NC}   ${CYAN}┃${NC}
+${CYAN}┣━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━┫${NC}
+${CYAN}┃${NC}  ${GREEN}[0]${NC} 🔄 更新脚本   ${CYAN}┃${NC}  ${BLUE}[4]${NC} ▶️  启动服务    ${CYAN}┃${NC}${status_color}${status_text}${NC} ${CYAN}┃${NC}
+${CYAN}┃${NC}  ${GREEN}[1]${NC} 📥 标准安装   ${CYAN}┃${NC}  ${BLUE}[5]${NC} ⏹️  停止服务    ${CYAN}┃${NC}        ${CYAN}┃${NC}
+${CYAN}┃${NC}  ${GREEN}[11]${NC} ⚡ 快速安装  ${CYAN}┃${NC}  ${BLUE}[6]${NC} 🔄 重启服务    ${CYAN}┃${NC}${GRAY}v${sh_ver}${NC} ${CYAN}┃${NC}
+${CYAN}┃${NC}  ${GREEN}[2]${NC} ⬆️  更新核心   ${CYAN}┃${NC}                        ${CYAN}┃${NC}        ${CYAN}┃${NC}
+${CYAN}┃${NC}  ${RED}[3]${NC} 🗑️  卸载      ${CYAN}┃${NC}  🔧 ${WHITE}配置管理${NC}            ${CYAN}┃${NC}        ${CYAN}┃${NC}
+${CYAN}┣━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━┫${NC}
+${CYAN}┃${NC}                     ${CYAN}┃${NC}  ${YELLOW}[7]${NC} ✏️  修改配置    ${CYAN}┃${NC} ${GRAY}by${NC}     ${CYAN}┃${NC}
+${CYAN}┃${NC}  📊 ${WHITE}实用工具${NC}        ${CYAN}┃${NC}  ${YELLOW}[8]${NC} 👁️  查看配置    ${CYAN}┃${NC}${GRAY}dodo258${NC} ${CYAN}┃${NC}
+${CYAN}┃${NC}  ${PURPLE}[9]${NC} 📋 查看状态   ${CYAN}┃${NC}  ${YELLOW}[9]${NC} 📋 查看状态    ${CYAN}┃${NC}        ${CYAN}┃${NC}
+${CYAN}┃${NC}                     ${CYAN}┃${NC}                        ${CYAN}┃${NC}        ${CYAN}┃${NC}
+${CYAN}┣━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━┫${NC}
+${CYAN}┃${NC}  ${RED}[10]${NC} 🚪 退出面板                            ${CYAN}┃${NC}
+${CYAN}┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛${NC}
+"
 	if [[ -e ${FILE} ]]; then
 		check_status
 		if [[ "$status" == "running" ]]; then
